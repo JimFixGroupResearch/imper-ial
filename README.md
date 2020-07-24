@@ -5,13 +5,15 @@
 This repo contains my Agda code for reasoning about a simple imperative language,
 similar in style to what's done in Coq at the end of Pierce et al's Software 
 Foundations Volume 1 and at the beginning of Volume 2. The main files are those
-of the form `imper*.agda`. 
+of the form `imper*.agda`. The remaining bulk of the repo's contents is the result
+of my forking of the [Iowa Agda Library repo](https://github.com/cedille/ial)
+developed by [Aaron Stump](http://homepage.cs.uiowa.edu/~astump/) and his research group.
+I'm making a small addition, modeling the Imper language, that builds on their stuff, and
+I am grateful to have access to their code.
 
 My goal with this code is to develop a two-week program verification module for the Reed
 CS course [**CSCI 384: Programming Languages**](https://jimfix.github.io/csci384/index.html)
-The rest of the repo's contents is the result of my forking of the [Iowa Agda Library repo](https://github.com/cedille/ial)
-developed by [Aaron Stump](http://homepage.cs.uiowa.edu/~astump/) and his research group.
-I've chosen to use this code, rather than the Agda standard library, because it is a bit more
+I've chosen to use IAL, rather than the Agda standard library, because it is a bit more
 compact, and the parts I rely on are much more self-contained. The code is given a very clear and concise
 treatment in his text
 [*Verified Functional Programming Agda*](https://www.amazon.com/Verified-Functional-Programming-Agda-Books/dp/1970001240).
@@ -46,6 +48,6 @@ This second component, on Hoare logic, would be covered in a second week of the 
 
 ### Thanks
 
-Many thanks go to [Henry Blanchette](https://github.com/Riib11) and [Eli Poppele](https://github.com/epoppele) who developed this with me during the Summer of 2020.
+Many thanks go to [Henry Blanchette](https://github.com/Riib11) and [Eli Poppele](https://github.com/poppele) who developed this with me during the Summer of 2020.
 Their work was funded by The Crandall Research Fund.
 
