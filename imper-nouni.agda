@@ -1,5 +1,14 @@
 module imper-nouni where
 
+--
+-- TO-DOs
+--
+-- * change use of =string
+-- * prove that =string can't be both tt and ff
+-- * prove reverse theorems for passes/fails/chck
+-- * prove semantic equivalence for execs and execsTo
+--    + this would be s-thm and s-det
+
 open import lib
 open import eq-reas-nouni
 
@@ -10,6 +19,14 @@ _-nat_ = _∸_
 cross = _×_
 
 equiv = _≡_
+
+bottom = ⊥
+
+bottom-elim = ⊥-elim
+
+--
+-- inspect/with-eq idiom
+--
 
 data Singleton {a} {A : Set a} (x : A) : Set a where
   _with-eq_ : (y : A) → equiv x y → Singleton x
@@ -125,126 +142,54 @@ exec (returns e) F = (update "retval" (eval e F) F)
 --
 -- SEMANTICS of stack bindings as a relation
 --
-
-data maps : Frm -> Id -> Val -> Set where
+data mapsTo : Frm -> Id -> Val -> Set where
 
   var-undef : forall {x : Id}
               ----------------
-              -> (maps [] x 0)
+              -> (mapsTo [] x 0)
 
   var-match : forall {x y : Id} {F : Frm} {v : Val}
               -> (equiv (x =string y) tt)
               ---------------------------
-              -> (maps ((y , v) :: F) x v) 
+              -> (mapsTo ((y , v) :: F) x v) 
 
   var-mismatch : forall {x y : Id} {F : Frm} {v w : Val}
                  -> (equiv (x =string y) ff)
-                 -> (maps F x v)
+                 -> (mapsTo F x v)
                  ----------------------------
-                 -> (maps ((y , w) :: F) x v)
-
-
-if-tt-then : forall{A : Set} {b : bool} {a1 a2 : A}
-    -> equiv b tt -> equiv (if b then a1 else a2)  a1
-if-tt-then{A}{b}{a1}{a2} b-is-tt =
-  begin
-    if b then a1 else a2
-  equiv[ cong3 if_then_else_ b-is-tt refl refl ]
-    if tt then a1 else a2
-  equiv[ refl ]
-    a1
-  qed
-
-if-ff-then : forall{A : Set}{b : bool}{a1 a2 : A}
-    -> equiv b ff -> equiv (if b then a1 else a2) a2
-if-ff-then{A}{b}{a1}{a2} b-is-ff =
-  begin
-    if b then a1 else a2
-  equiv[ cong3 if_then_else_ b-is-ff refl refl ]
-    if ff then a1 else a2
-  equiv[ refl ]
-    a2
-  qed
+                 -> (mapsTo ((y , w) :: F) x v)
 
 --
--- THEOREM: maps IMPLIES lookup
+-- THEOREM: mapsTo agrees with lookup
 --
-var-thm-fwd : forall{x : Id}{F : Frm}{v : Val}
-  -> maps F x v -> equiv (lkup x F) v
-var-thm-fwd{x}{[]}{0} var-undef =
-  begin
-    lkup x []
-  equiv[ refl ]
-    0
-  qed
-var-thm-fwd (var-match{x}{y}{F}{w} x-is-y) =
-  begin
-    lkup x ((y , w) :: F)
-  equiv[ refl ]
-    if (x =Id y) then w else (lkup x F)
-  equiv[ if-tt-then x-is-y ]
-    w
-  qed
-var-thm-fwd (var-mismatch{x}{y}{F}{v}{w} x-isnt-y maps-x-v) =
-  let
-    lkup-is-v : equiv (lkup x F) v
-    lkup-is-v = var-thm-fwd maps-x-v
-  in begin
-    lkup x ((y , w) :: F)
-  equiv[ refl ]
-    if (x =Id y) then w else (lkup x F)
-  equiv[ if-ff-then x-isnt-y ]
-    lkup x F
-  equiv[ lkup-is-v ]
-    v
-  qed
+var-thm : forall (x : Id) (F : Frm) -> mapsTo F x (lkup x F)
+var-thm x [] = var-undef
+var-thm x ((y , w) :: F)
+     with (inspect (x =string y))
+...     | tt with-eq match =
+            let lkup-is-w : (equiv (lkup x ((y , w) :: F)) w)
+                lkup-is-w = cong3 if_then_else_ match refl refl
+             in cong-pred (mapsTo ((y , w) :: F) x) (sym lkup-is-w) (var-match match)
+...     | ff with-eq mismatch = 
+            let lkup-is-lkup : (equiv (lkup x ((y , w) :: F)) (lkup x F))
+                lkup-is-lkup = cong3 if_then_else_ mismatch refl refl
+             in cong-pred (mapsTo ((y , w) :: F) x) (sym lkup-is-lkup) (var-mismatch mismatch (var-thm x F))
 
---
--- THEOREM: lookup IMPLIES maps
---
-var-thm-rev : forall{x : Id}{F : Frm}{v : Val}
-  -> equiv (lkup x F) v -> maps F x v
-var-thm-rev{x}{[]}{v} lookup-is-v =
-  let equiv-v-0 : equiv v 0
-      equiv-v-0 = begin
-                    v
-                  equiv[ sym lookup-is-v ]
-                    lkup x []
-                  equiv[ refl ]
-                    0
-                  qed
-   in cong-pred (\ o -> maps [] x o) (sym equiv-v-0) var-undef 
-var-thm-rev{x}{(y , w) :: F}{v} lookup-in-::F-is-v
- with inspect (x =string y)
-... | tt with-eq x-is-y =
-          let v-is-w : equiv v w
-              v-is-w = begin
-                      v
-                    equiv[ sym lookup-in-::F-is-v ]
-                      lkup x ((y , w) :: F)
-                    equiv[ refl ]
-                      if x =string y then w else (lkup x F)
-                    equiv[ cong3 if_then_else_ x-is-y refl refl ]
-                      if tt then w else (lkup x F)
-                    equiv[ refl ]
-                      w
-                    qed
-           in cong-pred (\ o -> maps ((y , w) :: F) x o) (sym v-is-w) (var-match x-is-y)
-... | ff with-eq x-isnt-y =
-          let v-is-lookup-in-F : equiv v (lkup x F)
-              v-is-lookup-in-F = begin
-                      v
-                    equiv[ sym lookup-in-::F-is-v ]
-                      lkup x ((y , w) :: F)
-                    equiv[ refl ]
-                      if x =string y then w else (lkup x F)
-                    equiv[ cong3 if_then_else_ x-isnt-y refl refl ]
-                      if ff then w else (lkup x F)
-                    equiv[ refl ]
-                      lkup x F
-                    qed
-           in (var-mismatch x-isnt-y (var-thm-rev (sym v-is-lookup-in-F)))
-
+postulate
+  =Id-det : ∀ {x y : Id} -> (equiv (x =string y) tt) -> (equiv (x =string y) ff) -> bottom
+  
+var-det : forall{x : Id}{F : Frm}{u1 u2 : Val}
+    -> mapsTo F x u1 -> mapsTo F x u2 -> equiv u1 u2
+var-det{x}{[]}{u1}{u2} var-undef var-undef =
+  refl
+var-det{x}{(y , w) :: F}{u1}{u2} (var-match _) (var-match _) =
+  refl
+var-det{x}{(y , w) :: F}{u1}{u2} (var-mismatch _ lkup-is-u1) (var-mismatch _ lkup-is-u2) =
+  var-det lkup-is-u1 lkup-is-u2
+var-det{x}{(y , w) :: F}{u1}{u2} (var-match{.x}{.y}{.F}{.u1} same) (var-mismatch{.x}{.y}{.F}{.u2} diff _) =
+  bottom-elim (=Id-det{x}{y} same diff)
+var-det{x}{(y , w) :: F}{u1}{u2} (var-mismatch{.x}{.y}{.F}{.u1} diff _) (var-match{.x}{.y}{.F}{.u2} same) =
+  bottom-elim (=Id-det{x}{y} same diff)
 
 --
 -- SEMANTICS of expression evaluation as a relation
@@ -257,7 +202,7 @@ data evalsTo : Frm -> Expn -> Val -> Set where
             -> (evalsTo F (val v) v)
 
   e-var : forall {x : Id} {F : Frm} {v : Val}
-          -> (maps F x v)
+          -> (mapsTo F x v)
           ------------------------
           -> (evalsTo F (var x) v) 
 
@@ -278,231 +223,159 @@ data evalsTo : Frm -> Expn -> Val -> Set where
           ----------------------------------------
           -> (evalsTo F (scaleBy e1 v2) (v1 * v2))
 
-e-thm-fwd : forall{e : Expn}{F : Frm}{v : Val}
-            -> evalsTo F e v -> equiv (eval e F) v
-e-thm-fwd (e-val{v}{F}) =
-  begin
-    eval (val v) F
-  equiv[ refl ]
-    v
-  qed
-e-thm-fwd (e-var{x}{F}{v} lookup-is-v) = 
-  begin
-    eval (var x) F
-  equiv[ var-thm-fwd lookup-is-v ]
-    v
-  qed
-e-thm-fwd (e-add{e1}{e2}{F}{v1}{v2} e1-evalsTo-v1 e2-evalsTo-v2) =
-  let
-    eval-e1-is-v1 = e-thm-fwd e1-evalsTo-v1
-    eval-e2-is-v2 = e-thm-fwd e2-evalsTo-v2
-  in begin
-    eval (plus e1 e2) F
-  equiv[ refl ]
-    (eval e1 F) + (eval e2 F)
-  equiv[ cong2 _+_ eval-e1-is-v1 eval-e2-is-v2 ]
-    v1 + v2
-  qed
-e-thm-fwd (e-sub{e1}{e2}{F}{v1}{v2} e1-evalsTo-v1 e2-evalsTo-v2) =
-  let
-    eval-e1-is-v1 = e-thm-fwd e1-evalsTo-v1
-    eval-e2-is-v2 = e-thm-fwd e2-evalsTo-v2
-  in begin
-    eval (minus e1 e2) F
-  equiv[ refl ]
-    (eval e1 F) -nat (eval e2 F)
-  equiv[ cong2 _-nat_ eval-e1-is-v1 eval-e2-is-v2 ]
-    v1 -nat v2
-  qed
-e-thm-fwd (e-scale{e1}{F}{v1}{v2} e1-evalsTo-v1) =
-  let
-    eval-e1-is-v1 = e-thm-fwd e1-evalsTo-v1
-  in begin
-    eval (scaleBy e1 v2) F
-  equiv[ refl ]
-    (eval e1 F) * v2
-  equiv[ cong2 _*_ eval-e1-is-v1 refl ]
-    v1 * v2
-  qed
 
-e-thm-rev : forall{e : Expn}{F : Frm}{v : Val}
-  -> (equiv (eval e F) v) -> (evalsTo F e v)
-e-thm-rev{e}{F}{v} eval-e-is-v
-    with e
-...    | val w = cong-pred (\ o -> (evalsTo F (val w) o)) eval-e-is-v e-val
-...    | var x = let v-is-lookup : (equiv v (lkup x F))
-                     v-is-lookup = begin
-                                     v
-                                   equiv[ sym eval-e-is-v ]
-                                     eval (var x) F
-                                   equiv[ refl ]
-                                     lkup x F
-                                   qed
-                in  e-var (var-thm-rev (sym v-is-lookup))
-...    | plus e1 e2 = {!!}
-...    | minus e1 e2 = {!!}
-...    | scaleBy e1 v2 = {!!}
+e-thm : forall (e : Expn) -> (F : Frm) -> (evalsTo F e (eval e F))
+e-thm (val e) F = e-val
+e-thm (var x) F = e-var (var-thm x F)
+e-thm (plus e1 e2) F = (e-add (e-thm e1 F) (e-thm e2 F))
+e-thm (minus e1 e2) F = (e-sub (e-thm e1 F) (e-thm e2 F))
+e-thm (scaleBy e1 v2) F = (e-scale (e-thm e1 F))
+
+e-det : forall {e : Expn}{F : Frm}{u w : Val}
+  -> (evalsTo F e u) -> (evalsTo F e w) -> (equiv u w)
+e-det{val v}{F}{u}{w} e-val e-val =  refl 
+e-det{var x}{F}{u}{w} (e-var var-lkup-u) (e-var var-lkup-v) =
+  var-det var-lkup-u var-lkup-v
+e-det{plus e1 e2}{F}{u}{w} (e-add e-u1 e-u2) (e-add e-w1 e-w2) =
+  cong2 _+_ (e-det e-u1 e-w1) (e-det e-u2 e-w2)
+e-det{minus e1 e2}{F}{u}{w} (e-sub e-u1 e-u2) (e-sub e-w1 e-w2) =
+  cong2 _-nat_ (e-det e-u1 e-w1) (e-det e-u2 e-w2)
+e-det{scaleBy e1 v2}{F}{u}{w} (e-scale e-u1) (e-scale e-w1) =
+  cong2 _*_ (e-det e-u1 e-w1) refl
+
+e-thm-fwd : forall {e : Expn}{F : Frm}{v : Val}
+  -> (evalsTo F e v) -> (equiv v (eval e F))
+e-thm-fwd{e}{F}{v} ev =
+  let
+      p1 : evalsTo F e (eval e F)
+      p1 = e-thm e F
+   in e-det ev p1 
+
+e-thm-rev : forall {e : Expn}{F : Frm}{v : Val}
+  -> (equiv v (eval e F)) -> (evalsTo F e v)
+e-thm-rev{e}{F}{v} v-is = cong-pred (evalsTo F e) (sym v-is) (e-thm e F)
 
 --
 -- SEMANTICS of conditions as a decidable relation
 --
 
-data  isTrue : Frm -> Cond -> Set
-data isFalse : Frm -> Cond -> Set
+data  passes : Frm -> Cond -> Set
+data fails : Frm -> Cond -> Set
 
-data isTrue where
+data passes where
 
   c-tt :  forall {F : Frm}
           ----------------
-          -> isTrue F true
+          -> passes F true
 
   c-and : forall {c1 c2 : Cond} {F : Frm}
-          -> isTrue F c1
-          -> isTrue F c2
+          -> passes F c1
+          -> passes F c2
           -----------------------
-          -> isTrue F (and c1 c2)
+          -> passes F (and c1 c2)
 
   c-or1 : forall {c1 c2 : Cond} {F : Frm}
-          -> isTrue F c1
+          -> passes F c1
           ----------------------
-          -> isTrue F (or c1 c2)
+          -> passes F (or c1 c2)
 
   c-or2 : forall {c1 c2 : Cond} {F : Frm}
-          -> isTrue F c2
+          -> passes F c2
           ----------------------
-          -> isTrue F (or c1 c2)
+          -> passes F (or c1 c2)
 
   c-less : forall {e1 e2 : Expn} {F : Frm} {v1 v2 : Val}
            -> equiv (v1 < v2) tt
            -> evalsTo F e1 v1
            -> evalsTo F e2 v2
            -------------------------
-           -> isTrue F (less e1 e2)
+           -> passes F (less e1 e2)
 
   c-eq : forall {e1 e2 : Expn} {F : Frm} {v1 v2 : Val}
            -> equiv (v1 =nat v2) tt
            -> evalsTo F e1 v1
            -> evalsTo F e2 v2
            --------------------------
-           -> isTrue F (equal e1 e2)
+           -> passes F (equal e1 e2)
 
   c-not : forall {c : Cond} {F : Frm}
-          -> isFalse F c
+          -> fails F c
           -------------------
-          -> isTrue F (not c)
+          -> passes F (not c)
 
-data isFalse where
+data fails where
 
   ~c-ff :  forall {F : Frm}
           ----------------
-          -> isFalse F false
+          -> fails F false
 
   ~c-or : forall {c1 c2 : Cond} {F : Frm}
-          -> isFalse F c1
-          -> isFalse F c2
+          -> fails F c1
+          -> fails F c2
           -----------------------
-          -> isFalse F (or c1 c2)
+          -> fails F (or c1 c2)
 
   ~c-and1 : forall {c1 c2 : Cond} {F : Frm}
-          -> isFalse F c1
+          -> fails F c1
           ----------------------
-          -> isFalse F (and c1 c2)
+          -> fails F (and c1 c2)
 
   ~c-and2 : forall {c1 c2 : Cond} {F : Frm}
-          -> isFalse F c2
+          -> fails F c2
           ----------------------
-          -> isFalse F (and c1 c2)
+          -> fails F (and c1 c2)
 
   ~c-less : forall {e1 e2 : Expn} {F : Frm} {v1 v2 : Val}
            -> equiv (v1 < v2) ff
            -> evalsTo F e1 v1
            -> evalsTo F e2 v2
            -------------------------
-           -> isFalse F (less e1 e2)
+           -> fails F (less e1 e2)
 
   ~c-eq : forall {e1 e2 : Expn} {F : Frm} {v1 v2 : Val}
            -> equiv (v1 =nat v2) ff
            -> evalsTo F e1 v1
            -> evalsTo F e2 v2
            --------------------------
-           -> isFalse F (equal e1 e2)
+           -> fails F (equal e1 e2)
 
   ~c-not : forall {c : Cond} {F : Frm}
-          -> isTrue F c
+          -> passes F c
           -------------------
-          -> isFalse F (not c)
+          -> fails F (not c)
 
-c-thm-fwd : forall {c : Cond}{F : Frm} -> (isTrue F c) -> (equiv (chck c F) tt)
-~c-thm-fwd : forall {c : Cond}{F : Frm} -> (isFalse F c) -> (equiv (chck c F) ff)
+c-thm-fwd : forall {c : Cond}{F : Frm} -> (passes F c) -> (equiv (chck c F) tt)
+~c-thm-fwd : forall {c : Cond}{F : Frm} -> (fails F c) -> (equiv (chck c F) ff)
 
-c-thm-fwd (c-tt{F}) =
-  begin
-    chck true F
-  equiv[ refl ]
-    tt
-  qed
-c-thm-fwd (c-and{c1}{c2}{F} isTrue-c1 isTrue-c2) =
-  let
-    chck-c1-is-tt : (equiv (chck c1 F) tt)
-    chck-c1-is-tt = c-thm-fwd isTrue-c1 
-    chck-c2-is-tt : (equiv (chck c2 F) tt)
-    chck-c2-is-tt = c-thm-fwd isTrue-c2 
-  in begin
-    chck (and c1 c2) F
-  equiv[ refl ]
-    (chck c1 F) && (chck c2 F)
-  equiv[ cong2 _&&_ chck-c1-is-tt chck-c2-is-tt ]
-    tt && tt
-  equiv[ refl ]
-    tt
-  qed  
-c-thm-fwd (c-or1{c1}{c2}{F} isTrue-c1) =
-  let
-    chck-c1-is-tt : (equiv (chck c1 F) tt)
-    chck-c1-is-tt = c-thm-fwd isTrue-c1 
-  in begin
-    chck (or c1 c2) F
-  equiv[ refl ]
-    (chck c1 F) || (chck c2 F)
-  equiv[ cong2 _||_ chck-c1-is-tt refl ]
-    tt || (chck c2 F)
-  equiv[ refl ]
-    tt
-  qed  
-c-thm-fwd (c-or2{c1}{c2}{F} isTrue-c2) =
-  let
-    chck-c2-is-tt : (equiv (chck c2 F) tt)
-    chck-c2-is-tt = c-thm-fwd isTrue-c2 
-  in begin
-    chck (or c1 c2) F
-  equiv[ refl ]
-    (chck c1 F) || (chck c2 F)
-  equiv[ cong2 _||_ refl chck-c2-is-tt ]
-    (chck c1 F) || tt
-  equiv[ ||-tt (chck c1 F) ]
-    tt
-  qed  
+c-thm-fwd (c-tt{F}) = refl
+c-thm-fwd (c-and{c1}{c2}{F} passes-c1 passes-c2) =
+  cong2 _&&_ (c-thm-fwd passes-c1) (c-thm-fwd passes-c2)
+c-thm-fwd (c-or1{c1}{c2}{F} passes-c1) =
+  cong2 _||_ (c-thm-fwd passes-c1) refl
+c-thm-fwd (c-or2{c1}{c2}{F} passes-c2) =
+  trans (cong2 _||_ refl (c-thm-fwd passes-c2)) (||-tt (chck c1 F))
 c-thm-fwd (c-less{e1}{e2}{F}{v1}{v2} v1-less-v2 evalsTo-e1-v1 evalsTo-e2-v2) =
   let
     eval-e1-is-v1 : (equiv (eval e1 F) v1)
-    eval-e1-is-v1 = e-thm-fwd evalsTo-e1-v1
+    eval-e1-is-v1 = sym (e-thm-fwd evalsTo-e1-v1)
     eval-e2-is-v2 : (equiv (eval e2 F) v2)
-    eval-e2-is-v2 = e-thm-fwd evalsTo-e2-v2
-  in begin
-    chck (less e1 e2) F
-  equiv[ refl ]
-    (eval e1 F) < (eval e2 F)
-  equiv[ cong2 _<_ eval-e1-is-v1 eval-e2-is-v2 ]
-    v1 < v2
-  equiv[ v1-less-v2 ]
-    tt
-  qed
+    eval-e2-is-v2 = sym (e-thm-fwd evalsTo-e2-v2)
+  in
+    begin
+      chck (less e1 e2) F
+    equiv[ refl ]
+      (eval e1 F) < (eval e2 F)
+    equiv[ cong2 _<_ eval-e1-is-v1 eval-e2-is-v2 ]
+      v1 < v2
+    equiv[ v1-less-v2 ]
+      tt
+    qed
 c-thm-fwd (c-eq{e1}{e2}{F}{v1}{v2} v1-equals-v2 evalsTo-e1-v1 evalsTo-e2-v2) =
   let
     eval-e1-is-v1 : (equiv (eval e1 F) v1)
-    eval-e1-is-v1 = e-thm-fwd evalsTo-e1-v1
+    eval-e1-is-v1 = sym (e-thm-fwd evalsTo-e1-v1)
     eval-e2-is-v2 : (equiv (eval e2 F) v2)
-    eval-e2-is-v2 = e-thm-fwd evalsTo-e2-v2
+    eval-e2-is-v2 = sym (e-thm-fwd evalsTo-e2-v2)
   in
     begin
       chck (equal e1 e2) F
@@ -513,74 +386,22 @@ c-thm-fwd (c-eq{e1}{e2}{F}{v1}{v2} v1-equals-v2 evalsTo-e1-v1 evalsTo-e2-v2) =
     equiv[ v1-equals-v2 ]
       tt
     qed
-c-thm-fwd (c-not{c}{F} c-isFalse) =
-  let
-    chck-c-is-ff : (equiv (chck c F) ff)
-    chck-c-is-ff = ~c-thm-fwd c-isFalse
-  in 
-    begin
-      chck (not c) F
-    equiv[ refl ]
-      ~ (chck c F)
-    equiv[ cong ~_ chck-c-is-ff ]
-      ~ ff
-    equiv[ refl ]
-      tt
-    qed
+c-thm-fwd (c-not{c}{F} c-fails) = cong ~_ (~c-thm-fwd c-fails)
 
 ~c-thm-fwd (~c-ff{F}) =
-  begin
-    chck false F
-  equiv[ refl ]
-    ff
-  qed
-~c-thm-fwd (~c-or{c1}{c2}{F} isFalse-c1 isFalse-c2) =
-  let
-    chck-c1-is-ff : (equiv (chck c1 F) ff)
-    chck-c1-is-ff = ~c-thm-fwd isFalse-c1 
-    chck-c2-is-ff : (equiv (chck c2 F) ff)
-    chck-c2-is-ff = ~c-thm-fwd isFalse-c2 
-  in begin
-    chck (or c1 c2) F
-  equiv[ refl ]
-    (chck c1 F) || (chck c2 F)
-  equiv[ cong2 _||_ chck-c1-is-ff chck-c2-is-ff ]
-    ff || ff
-  equiv[ refl ]
-    ff
-  qed  
-~c-thm-fwd (~c-and1{c1}{c2}{F} isFalse-c1) =
-  let
-    chck-c1-is-ff : (equiv (chck c1 F) ff)
-    chck-c1-is-ff = ~c-thm-fwd isFalse-c1 
-  in begin
-    chck (and c1 c2) F
-  equiv[ refl ]
-    (chck c1 F) && (chck c2 F)
-  equiv[ cong2 _&&_ chck-c1-is-ff refl ]
-    ff && (chck c2 F)
-  equiv[ refl ]
-    ff
-  qed  
-~c-thm-fwd (~c-and2{c1}{c2}{F} isFalse-c2) =
-  let
-    chck-c2-is-ff : (equiv (chck c2 F) ff)
-    chck-c2-is-ff = ~c-thm-fwd isFalse-c2 
-  in begin
-    chck (and c1 c2) F
-  equiv[ refl ]
-    (chck c1 F) && (chck c2 F)
-  equiv[ cong2 _&&_ refl chck-c2-is-ff ]
-    (chck c1 F) && ff
-  equiv[ &&-ff (chck c1 F) ]
-    ff
-  qed  
+  refl
+~c-thm-fwd (~c-or{c1}{c2}{F} fails-c1 fails-c2) =
+  cong2 _||_ (~c-thm-fwd fails-c1) (~c-thm-fwd fails-c2)
+~c-thm-fwd (~c-and1{c1}{c2}{F} fails-c1) =
+  cong2 _&&_ (~c-thm-fwd fails-c1) refl
+~c-thm-fwd (~c-and2{c1}{c2}{F} fails-c2) =
+  trans (cong2 _&&_ refl (~c-thm-fwd fails-c2)) (&&-ff (chck c1 F))
 ~c-thm-fwd (~c-less{e1}{e2}{F}{v1}{v2} v1-not-less-v2 evalsTo-e1-v1 evalsTo-e2-v2) =
   let
     eval-e1-is-v1 : (equiv (eval e1 F) v1)
-    eval-e1-is-v1 = e-thm-fwd evalsTo-e1-v1
+    eval-e1-is-v1 = sym (e-thm-fwd evalsTo-e1-v1)
     eval-e2-is-v2 : (equiv (eval e2 F) v2)
-    eval-e2-is-v2 = e-thm-fwd evalsTo-e2-v2
+    eval-e2-is-v2 = sym (e-thm-fwd  evalsTo-e2-v2)
   in begin
     chck (less e1 e2) F
   equiv[ refl ]
@@ -593,9 +414,9 @@ c-thm-fwd (c-not{c}{F} c-isFalse) =
 ~c-thm-fwd (~c-eq{e1}{e2}{F}{v1}{v2} v1-not-equals-v2 evalsTo-e1-v1 evalsTo-e2-v2) =
   let
     eval-e1-is-v1 : (equiv (eval e1 F) v1)
-    eval-e1-is-v1 = e-thm-fwd evalsTo-e1-v1
+    eval-e1-is-v1 = sym (e-thm-fwd evalsTo-e1-v1)
     eval-e2-is-v2 : (equiv (eval e2 F) v2)
-    eval-e2-is-v2 = e-thm-fwd evalsTo-e2-v2
+    eval-e2-is-v2 = sym (e-thm-fwd evalsTo-e2-v2)
   in
     begin
       chck (equal e1 e2) F
@@ -606,27 +427,14 @@ c-thm-fwd (c-not{c}{F} c-isFalse) =
     equiv[ v1-not-equals-v2 ]
       ff
     qed
-~c-thm-fwd (~c-not{c}{F} c-isTrue) =
-  let
-    chck-c-is-tt : (equiv (chck c F) tt)
-    chck-c-is-tt = c-thm-fwd c-isTrue
-  in 
-    begin
-      chck (not c) F
-    equiv[ refl ]
-      ~ (chck c F)
-  equiv[ cong ~_ chck-c-is-tt ]
-    ~ tt
-  equiv[ refl ]
-    ff
-  qed
+~c-thm-fwd (~c-not{c}{F} c-passes) =
+  cong ~_ (c-thm-fwd c-passes)
 
 -- These can probably be shown just by using
 -- the contrapositives of ~c-thm-fwd and ~~c-thm-fwd
 postulate
-  c-thm-rev : forall {c : Cond}{F : Frm} -> (equiv (chck c F) tt) -> (isTrue F c)
-  ~c-thm-rev : forall {c : Cond}{F : Frm} -> (equiv (chck c F) ff) -> (isFalse F c)
-
+  c-thm-rev : forall {c : Cond}{F : Frm} -> (equiv (chck c F) tt) -> (passes F c)
+  ~c-thm-rev : forall {c : Cond}{F : Frm} -> (equiv (chck c F) ff) -> (fails F c)
 
 --
 -- SEMANTICS of program statements
@@ -651,24 +459,24 @@ data execsTo : Frm -> Stmt -> Frm -> Set where
     -> (execsTo F0 (seq s1 s2) F2)
 
   s-if-then : forall {c : Cond} {s1 s2 : Stmt} {F F' : Frm}
-    -> (isTrue F c)
+    -> (passes F c)
     -> (execsTo F s1 F')
     --------------------------------------
     -> (execsTo F (ifThenElse c s1 s2) F')
 
   s-if-else : forall {c : Cond} {s1 s2 : Stmt} {F F' : Frm}
-    -> (isFalse F c)
+    -> (fails F c)
     -> (execsTo F s2 F')
     --------------------------------------
     -> (execsTo F (ifThenElse c s1 s2) F')
 
   s-repeat-0 : forall {s : Stmt} {x : Id} {F : Frm}
-     -> (maps F x 0)
+     -> (mapsTo F x 0)
      -------------------------------
      -> (execsTo F (repeatBy x s) F)
 
   s-repeat-suc : forall {n : nat} {s : Stmt} {x : Id} {F F' : Frm}
-    -> (maps F x (suc n))
+    -> (mapsTo F x (suc n))
     -> (execsTo F (seq (seq s (assign x (val n))) (repeatBy x s)) F')
     -----------------------------------------------------------------
     -> (execsTo F (repeatBy x s) F')
